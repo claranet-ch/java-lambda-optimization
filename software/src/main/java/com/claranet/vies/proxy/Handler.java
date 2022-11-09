@@ -26,7 +26,6 @@ public class Handler implements RequestHandler<APIGatewayV2HTTPEvent, APIGateway
             .getResource("wsdl/checkVatService.wsdl");
         var qName = new QName("urn:ec.europa.eu:taxud:vies:services:checkVat", "checkVatService");
         PORT = new CheckVatService(wsdlLocation, qName).getCheckVatPort();
-        System.out.println("INITIALIZER called");
     }
 
 

@@ -1,5 +1,5 @@
 {
-  "app": "./mvnw -e -q compile exec:java -pl infrastructure",
+  "app": "./mvnw -ntp -e -q compile exec:java -pl infrastructure",
   "watch": {
     "include": [
       "infrastructure/**"

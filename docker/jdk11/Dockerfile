@@ -4,7 +4,7 @@ FROM public.ecr.aws/amazoncorretto/amazoncorretto:11-al2-jdk as build
 COPY . build
 WORKDIR /build
 # skipping tests because it would require a docker-compose setup, which is out of scope for this example
-RUN ./mvnw package -DskipTests
+RUN ./mvnw -ntp -e -q package -DskipTests
 
 # Find JDK module dependencies dynamically from the uber jar
 RUN jdeps -q \

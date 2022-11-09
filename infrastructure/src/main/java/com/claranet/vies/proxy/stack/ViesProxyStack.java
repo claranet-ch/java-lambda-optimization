@@ -1,6 +1,7 @@
 package com.claranet.vies.proxy.stack;
 
 import org.jetbrains.annotations.Nullable;
+import software.amazon.awscdk.CfnParameter;
 import software.amazon.awscdk.Duration;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
@@ -9,10 +10,7 @@ import software.amazon.awscdk.services.apigateway.RestApi;
 import software.amazon.awscdk.services.apigateway.RestApiProps;
 import software.amazon.awscdk.services.apigateway.StageOptions;
 import software.amazon.awscdk.services.iam.ServicePrincipal;
-import software.amazon.awscdk.services.lambda.AssetImageCodeProps;
-import software.amazon.awscdk.services.lambda.DockerImageCode;
-import software.amazon.awscdk.services.lambda.DockerImageFunction;
-import software.amazon.awscdk.services.lambda.Tracing;
+import software.amazon.awscdk.services.lambda.*;
 import software.amazon.awscdk.services.logs.RetentionDays;
 import software.constructs.Construct;
 
@@ -29,6 +27,7 @@ public class ViesProxyStack extends Stack {
         new RuntimeConfiguration("11", ""),
         new RuntimeConfiguration("19", APP_CDS)
     );
+    private static final String ARM_64 = "arm64";
 
     public ViesProxyStack(@Nullable Construct scope, @Nullable String id, @Nullable StackProps props) {
         super(scope, id, props);
@@ -40,10 +39,20 @@ public class ViesProxyStack extends Stack {
             .deployOptions(StageOptions.builder().stageName("dev").build())
             .build());
 
+        var allowedArchitectures = List.of(ARM_64, "x86_64");
+        var architectureParam = CfnParameter.Builder.create(this, "architecture")
+            .type("String")
+            .allowedValues(allowedArchitectures)
+            .description("Runtime architecture. Allowed values: "+ allowedArchitectures)
+            .build();
+
+        var targetArchitecture = ARM_64.equals(architectureParam.getValueAsString()) ? Architecture.ARM_64 : Architecture.X86_64;
+
         RUNTIME_CONFIGURATIONS.forEach(configuration -> {
             var function = DockerImageFunction.Builder.create(this, "ViesProxy" + configuration.runtime)
                 .code(DockerImageCode.fromImageAsset(".", AssetImageCodeProps.builder().file("docker/jdk" + configuration.runtime + "/Dockerfile").build()))
                 .functionName("vies-proxy-" + configuration.runtime)
+                .architecture(targetArchitecture)
                 .memorySize(512)
                 .environment(
                     Map.of(
