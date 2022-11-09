@@ -28,7 +28,6 @@ RUN /jre-slim/bin/java -Xshare:dump
 
 WORKDIR /build/software/target
 RUN export AWS_LAMBDA_RUNTIME_API="localhost:8080" &&\
-    unzip function.jar -d unpacked &&\
     /jre-slim/bin/java --add-opens java.base/java.util=ALL-UNNAMED -XX:ArchiveClassesAtExit=appCds.jsa -jar function.jar "com.claranet.vies.proxy.Handler::handleRequest" || :
 
 FROM public.ecr.aws/amazonlinux/amazonlinux:2
