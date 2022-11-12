@@ -24,9 +24,10 @@ RUN jlink --verbose \
 
 # Generate CDS archive for our slim JRE
 # It creates the file /jre-slim/lib/server/classes.jsa
-RUN /jre-slim/bin/java -Xshare:dump
+RUN /jre-slim/bin/java -Xshare:dump -version
 
 FROM public.ecr.aws/amazonlinux/amazonlinux:2
+ENV JAVA_HOME=/opt/jre
 ENV LANG=en_US.UTF-8
 ENV TZ=:/etc/localtime
 ENV PATH=/var/lang/bin:/usr/local/bin:/usr/bin/:/bin:/opt/bin
@@ -34,7 +35,7 @@ ENV LD_LIBRARY_PATH=/var/lang/lib:/lib64:/usr/lib64:/var/runtime:/var/runtime/li
 ENV LAMBDA_TASK_ROOT=/var/task
 ENV LAMBDA_RUNTIME_DIR=/var/runtime
 WORKDIR $LAMBDA_TASK_ROOT
-COPY --from=build /jre-slim /opt/jre/
+COPY --from=build /jre-slim $JAVA_HOME/
 COPY --from=build /build/software/target/function.jar function.jar
 COPY bootstrap bootstrap
 RUN chmod a+x bootstrap

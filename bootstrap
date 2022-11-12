@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-/opt/jre/bin/java $JAVA_OPTIONS --add-opens java.base/java.util=ALL-UNNAMED \
+$JAVA_HOME/bin/java $JAVA_OPTIONS --add-opens java.base/java.util=ALL-UNNAMED \
     -XX:+TieredCompilation \
     -XX:TieredStopAtLevel=1 \
     -XX:+UseSerialGC \

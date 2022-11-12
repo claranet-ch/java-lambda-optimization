@@ -1,5 +1,7 @@
 FROM public.ecr.aws/amazoncorretto/amazoncorretto:19-al2-jdk as build
 
+RUN yum -y update && yum install -y zip
+
 # Copy the software folder to the image and build the function
 COPY . build
 WORKDIR /build
@@ -19,30 +21,20 @@ RUN jlink --verbose \
     --strip-java-debug-attributes \
     --no-header-files \
     --no-man-pages \
-    --output /jre-slim \
+    --output /jre \
     --add-modules $(cat jre-deps.info)
 
 # Generate CDS archive for our slim JRE
-# It creates the file /jre-slim/lib/server/classes.jsa
-RUN /jre-slim/bin/java -Xshare:dump -version
+# It creates the file /jre/lib/server/classes.jsa
+RUN /jre/bin/java -Xshare:dump -version
 
 WORKDIR /build/software/target
 RUN export AWS_LAMBDA_RUNTIME_API="localhost:8080" &&\
-    /jre-slim/bin/java --add-opens java.base/java.util=ALL-UNNAMED -XX:ArchiveClassesAtExit=appCds.jsa -jar function.jar "com.claranet.vies.proxy.Handler::handleRequest" || :
+    /jre/bin/java --add-opens java.base/java.util=ALL-UNNAMED -XX:ArchiveClassesAtExit=appCds.jsa -jar function.jar "com.claranet.vies.proxy.Handler::handleRequest" 2>/dev/null 1>&2 || :
 
-FROM public.ecr.aws/amazonlinux/amazonlinux:2
-ENV JAVA_HOME=/opt/jre
-ENV LANG=en_US.UTF-8
-ENV TZ=:/etc/localtime
-ENV PATH=/var/lang/bin:/usr/local/bin:/usr/bin/:/bin:/opt/bin
-ENV LD_LIBRARY_PATH=/var/lang/lib:/lib64:/usr/lib64:/var/runtime:/var/runtime/lib:/var/task:/var/task/lib:/opt/lib
-ENV LAMBDA_TASK_ROOT=/var/task
-ENV LAMBDA_RUNTIME_DIR=/var/runtime
-WORKDIR $LAMBDA_TASK_ROOT
-COPY --from=build /jre-slim $JAVA_HOME/
-COPY --from=build /build/software/target/appCds.jsa appCds.jsa
-COPY --from=build /build/software/target/function.jar function.jar
+WORKDIR /
 COPY bootstrap bootstrap
-RUN chmod a+x bootstrap
+RUN chmod 755 bootstrap
+RUN cp /build/software/target/function.jar function.jar && cp /build/software/target/appCds.jsa appCds.jsa
+RUN zip -r runtime.zip bootstrap appCds.jsa function.jar /jre
 
-ENTRYPOINT ["/var/task/bootstrap"]
