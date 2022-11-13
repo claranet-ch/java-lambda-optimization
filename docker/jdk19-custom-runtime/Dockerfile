@@ -31,10 +31,9 @@ RUN /jre/bin/java -Xshare:dump -version
 WORKDIR /build/software/target
 RUN export AWS_LAMBDA_RUNTIME_API="localhost:8080" &&\
     /jre/bin/java --add-opens java.base/java.util=ALL-UNNAMED -XX:ArchiveClassesAtExit=appCds.jsa -jar function.jar "com.claranet.vies.proxy.Handler::handleRequest" 2>/dev/null 1>&2 || :
-
-WORKDIR /
 COPY bootstrap bootstrap
-RUN chmod 755 bootstrap
-RUN cp /build/software/target/function.jar function.jar && cp /build/software/target/appCds.jsa appCds.jsa
-RUN zip -r runtime.zip bootstrap appCds.jsa function.jar /jre
+RUN chmod 755 bootstrap && \
+    zip -r runtime.zip bootstrap appCds.jsa function.jar /jre && \
+    mkdir -p /asset-output && mv runtime.zip /asset-output
+
 

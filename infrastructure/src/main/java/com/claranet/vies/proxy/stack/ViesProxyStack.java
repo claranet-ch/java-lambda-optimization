@@ -1,10 +1,7 @@
 package com.claranet.vies.proxy.stack;
 
 import org.jetbrains.annotations.Nullable;
-import software.amazon.awscdk.CfnOutput;
-import software.amazon.awscdk.Duration;
-import software.amazon.awscdk.Stack;
-import software.amazon.awscdk.StackProps;
+import software.amazon.awscdk.*;
 import software.amazon.awscdk.services.apigateway.LambdaIntegration;
 import software.amazon.awscdk.services.apigateway.RestApi;
 import software.amazon.awscdk.services.apigateway.RestApiProps;
@@ -14,6 +11,7 @@ import software.amazon.awscdk.services.iam.ServicePrincipal;
 import software.amazon.awscdk.services.lambda.Runtime;
 import software.amazon.awscdk.services.lambda.*;
 import software.amazon.awscdk.services.logs.RetentionDays;
+import software.amazon.awscdk.services.s3.assets.AssetOptions;
 import software.constructs.Construct;
 
 import java.util.List;
@@ -82,6 +80,16 @@ public class ViesProxyStack extends Stack {
             buildMethod(this, restApi, configuration.runtime, function);
         });
 
+        var bundlingOptions = BundlingOptions.builder()
+                .image(DockerImage.fromBuild(".", DockerBuildAssetOptions.builder()
+                        .platform(ecrPlatform.getPlatform())
+                        .file("docker/jdk19-custom-runtime/Dockerfile")
+                        .imagePath("/out")
+                        .outputPath("/asset-output/")
+                        .build()))
+                .outputType(BundlingOutput.ARCHIVED)
+                .build();
+
         var customRuntimeFunction = Function.Builder.create(this, "ViesProxy19-custom")
             .runtime(Runtime.PROVIDED)
             .architecture(targetPlatform.architecture)
@@ -91,12 +99,11 @@ public class ViesProxyStack extends Stack {
                 JAVA_OPTIONS.key(), APP_CDS,
                 JAVA_HOME.key(), "./jre"
             ))
-            .code(Code.fromDockerBuild(".", DockerBuildAssetOptions.builder()
-                .platform(targetPlatform.architecture.getDockerPlatform())
-                .file("jdk19-custom-runtime/Dockerfile")
-                .imagePath("/runtime.zip")
-                .outputPath("./target/runtime.zip")
-                .build()))
+            .handler("not.really.needed")
+            .code(Code.fromAsset(".", AssetOptions.builder().bundling(bundlingOptions).build()))
+            .timeout(Duration.seconds(15))
+            .logRetention(RetentionDays.FIVE_DAYS)
+            .tracing(Tracing.ACTIVE)
             .build();
 
         buildMethod(this, restApi, "19-custom", customRuntimeFunction);
