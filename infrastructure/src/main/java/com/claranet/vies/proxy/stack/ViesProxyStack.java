@@ -40,8 +40,6 @@ public class ViesProxyStack extends Stack {
 
     private static final String APP_CDS = "-XX:SharedArchiveFile=appCds.jsa";
     private static final List<RuntimeConfiguration> RUNTIME_CONFIGURATIONS = List.of(
-        new RuntimeConfiguration("11-vanilla", ""),
-        new RuntimeConfiguration("11", ""),
         new RuntimeConfiguration("19", APP_CDS)
     );
 
@@ -56,43 +54,47 @@ public class ViesProxyStack extends Stack {
             .build());
 
         var targetPlatform = TargetPlatform.matchingCurrent();
-        var ecrPlatform = targetPlatform == ARM_64 ? Platform.LINUX_ARM64 : Platform.LINUX_AMD64;
 
-        RUNTIME_CONFIGURATIONS.forEach(configuration -> {
-            var buildConfiguration = AssetImageCodeProps.builder()
-                .file("docker/jdk" + configuration.runtime + "/Dockerfile")
-                .platform(ecrPlatform)
+        buildBaseline(this, restApi);
+        buildDockerFunctions(this, restApi, targetPlatform);
+        buildCustomRuntimeJava19(this, restApi);
+    }
+
+    private static void buildBaseline(Construct scope, RestApi restApi) {
+        var bundlingOptions = BundlingOptions.builder()
+                .image(Runtime.JAVA_11.getBundlingImage())
+                .command(List.of("./mvnw -ntp -e -q package -pl software -am -DskipTests -P snapStart" +
+                        " && cp software/target/function.jar /asset-output/"))
+                .user("root")
+                .entrypoint(List.of("/bin/sh", "-c"))
+                .outputType(BundlingOutput.ARCHIVED)
                 .build();
-            var function = DockerImageFunction.Builder.create(this, "ViesProxy" + configuration.runtime)
-                .code(DockerImageCode.fromImageAsset(".", buildConfiguration))
-                .functionName("vies-proxy-" + configuration.runtime)
-                .architecture(targetPlatform.architecture)
+        var baselineFunction = Function.Builder.create(scope, "ViesProxy19-baseline")
+                .runtime(Runtime.JAVA_11)
+                .architecture(Architecture.X86_64)
+                .functionName("vies-proxy-11-baseline")
+                .code(Code.fromAsset(".", AssetOptions.builder().bundling(bundlingOptions).build()))
+                .handler("com.claranet.vies.proxy.Handler::handleRequest")
                 .memorySize(512)
-                .environment(
-                    Map.of(
-                        JAVA_OPTIONS.key(), configuration.javaOptions
-                    ))
                 .timeout(Duration.seconds(15))
                 .logRetention(RetentionDays.FIVE_DAYS)
-                .tracing(Tracing.ACTIVE)
+                .tracing(Tracing.DISABLED) // tracing is not yet supported for SnapStart
                 .build();
+        buildMethod(scope, restApi, "11-baseline", baselineFunction);
+    }
 
-            buildMethod(this, restApi, configuration.runtime, function);
-        });
-
+    private static void buildCustomRuntimeJava19(Construct scope, RestApi restApi) {
         var bundlingOptions = BundlingOptions.builder()
-                .image(DockerImage.fromBuild(".", DockerBuildAssetOptions.builder()
-                        .platform(ecrPlatform.getPlatform())
-                        .file("docker/jdk19-custom-runtime/Dockerfile")
-                        .imagePath("/out")
-                        .outputPath("/asset-output/")
-                        .build()))
+                .image(DockerImage.fromRegistry("public.ecr.aws/amazoncorretto/amazoncorretto:19-al2-jdk"))
+                .command(List.of("./build-custom-runtime.sh && ./mvnw clean"))
+                .entrypoint(List.of("/bin/sh", "-c"))
+                .user("root")
                 .outputType(BundlingOutput.ARCHIVED)
                 .build();
 
-        var customRuntimeFunction = Function.Builder.create(this, "ViesProxy19-custom")
+        var customRuntimeFunction = Function.Builder.create(scope, "ViesProxy19-custom")
             .runtime(Runtime.PROVIDED)
-            .architecture(targetPlatform.architecture)
+            .architecture(Architecture.X86_64)
             .functionName("vies-proxy-19-custom")
             .memorySize(512)
             .environment(Map.of(
@@ -106,8 +108,32 @@ public class ViesProxyStack extends Stack {
             .tracing(Tracing.ACTIVE)
             .build();
 
-        buildMethod(this, restApi, "19-custom", customRuntimeFunction);
+        buildMethod(scope, restApi, "19-custom", customRuntimeFunction);
+    }
 
+    private static void buildDockerFunctions(Construct scope, RestApi restApi, TargetPlatform targetPlatform) {
+        var ecrPlatform = targetPlatform == ARM_64 ? Platform.LINUX_ARM64 : Platform.LINUX_AMD64;
+        RUNTIME_CONFIGURATIONS.forEach(configuration -> {
+            var buildConfiguration = AssetImageCodeProps.builder()
+                .file("docker/jdk" + configuration.runtime + "/Dockerfile")
+                .platform(ecrPlatform)
+                .build();
+            var function = DockerImageFunction.Builder.create(scope, "ViesProxy" + configuration.runtime)
+                .code(DockerImageCode.fromImageAsset(".", buildConfiguration))
+                .functionName("vies-proxy-" + configuration.runtime)
+                .architecture(targetPlatform.architecture)
+                .memorySize(512)
+                .environment(
+                    Map.of(
+                        JAVA_OPTIONS.key(), configuration.javaOptions
+                    ))
+                .timeout(Duration.seconds(15))
+                .logRetention(RetentionDays.FIVE_DAYS)
+                .tracing(Tracing.ACTIVE)
+                .build();
+
+            buildMethod(scope, restApi, configuration.runtime, function);
+        });
     }
 
     private static void buildMethod(Construct scope, RestApi restApi, String path, Function function) {

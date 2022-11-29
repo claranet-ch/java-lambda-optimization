@@ -3,15 +3,14 @@ FROM public.ecr.aws/amazoncorretto/amazoncorretto:19-al2-jdk as build
 # Copy the software folder to the image and build the function
 COPY . build
 WORKDIR /build
-# skipping tests because it would require a docker-compose setup, which is out of scope for this example
-RUN ./mvnw -ntp -e -q package -DskipTests
+RUN ./mvnw -ntp -e -q package -pl software -am -DskipTests
 
 # Find JDK module dependencies dynamically from the uber jar
 RUN jdeps -q \
     --ignore-missing-deps \
     --multi-release 19 \
     --print-module-deps \
-    software/target/function.jar > jre-deps.info
+    software/target/function.jar > /tmp/jre-deps.info
 
 # Create a slim JRE which only contains the required modules to run the function
 RUN jlink --verbose \
@@ -20,17 +19,17 @@ RUN jlink --verbose \
     --no-header-files \
     --no-man-pages \
     --output /jre-slim \
-    --add-modules $(cat jre-deps.info)
+    --add-modules $(cat /tmp/jre-deps.info)
 
 # Generate CDS archive for our slim JRE
 # It creates the file /jre-slim/lib/server/classes.jsa
-RUN /jre-slim/bin/java -Xshare:dump -version
+RUN /jre-slim/bin/java -Xshare:dump -XX:+UseSerialGC -version
 
 WORKDIR /build/software/target
 RUN export AWS_LAMBDA_RUNTIME_API="localhost:8080" &&\
     /jre-slim/bin/java --add-opens java.base/java.util=ALL-UNNAMED -XX:ArchiveClassesAtExit=appCds.jsa -jar function.jar "com.claranet.vies.proxy.Handler::handleRequest"  2>/dev/null 1>&2 || :
 
-FROM public.ecr.aws/amazonlinux/amazonlinux:2
+FROM public.ecr.aws/debian/debian:stable-slim
 ENV JAVA_HOME=/opt/jre
 ENV LANG=en_US.UTF-8
 ENV TZ=:/etc/localtime

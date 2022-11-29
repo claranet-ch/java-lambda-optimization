@@ -32,7 +32,7 @@
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-lambda-java-core</artifactId>
-            <version>1.2.1</version>
+            <version>1.2.2</version>
         </dependency>
         <dependency>
             <groupId>com.amazonaws</groupId>
@@ -48,11 +48,29 @@
             <groupId>software.amazon.lambda</groupId>
             <artifactId>powertools-tracing</artifactId>
             <version>${powertools.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-databind</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>software.amazon.lambda</groupId>
             <artifactId>powertools-metrics</artifactId>
             <version>${powertools.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-databind</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- replace vulnerable transitive version 2.13.4 with 2.13.4.1 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.13.4.1</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -64,9 +82,30 @@
             <groupId>com.sun.xml.ws</groupId>
             <artifactId>jaxws-rt</artifactId>
             <version>4.0.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml.woodstox</groupId>
+                    <artifactId>woodstox-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- replace vulnerable transitive dependency 6.2.1 with 6.4.0 -->
+        <dependency>
+            <groupId>com.fasterxml.woodstox</groupId>
+            <artifactId>woodstox-core</artifactId>
+            <version>6.4.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>1.7.30</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.crac</groupId>
+            <artifactId>org-crac</artifactId>
+            <version>0.1.3</version>
         </dependency>
     </dependencies>
-
     <build>
         <plugins>
             <plugin>
@@ -86,33 +125,6 @@
                     <wsdlDirectory>src/main/resources/wsdl/</wsdlDirectory>
                     <packageName>eu.europa.ec.vies</packageName>
                 </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>aspectj-maven-plugin</artifactId>
-                <version>1.14.0</version>
-                <configuration>
-                    <source>${maven.compiler.source}</source>
-                    <target>${maven.compiler.target}</target>
-                    <complianceLevel>${maven.compiler.target}</complianceLevel>
-                    <aspectLibraries>
-                        <aspectLibrary>
-                            <groupId>software.amazon.lambda</groupId>
-                            <artifactId>powertools-tracing</artifactId>
-                        </aspectLibrary>
-                        <aspectLibrary>
-                            <groupId>software.amazon.lambda</groupId>
-                            <artifactId>powertools-metrics</artifactId>
-                        </aspectLibrary>
-                    </aspectLibraries>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -168,64 +180,65 @@
     </build>
     <profiles>
         <profile>
-            <id>native-image</id>
+            <id>tracingEnabled</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
             <build>
                 <plugins>
                     <plugin>
-                        <groupId>org.graalvm.buildtools</groupId>
-                        <artifactId>native-maven-plugin</artifactId>
-                        <version>0.9.13</version>
-                        <extensions>true</extensions>
-                        <executions>
-                            <execution>
-                                <id>build-native</id>
-                                <goals>
-                                    <goal>build</goal>
-                                </goals>
-                                <phase>package</phase>
-                            </execution>
-                        </executions>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>aspectj-maven-plugin</artifactId>
+                        <version>1.14.0</version>
                         <configuration>
-                            <imageName>product-binary</imageName>
-                            <mainClass>com.amazonaws.services.lambda.runtime.api.client.AWSLambda</mainClass>
-                            <buildArgs>
-                                <!-- required for AWS Lambda Runtime Interface Client -->
-                                <arg>--enable-url-protocols=http</arg>
-                                <arg>-H:-UseServiceLoaderFeature</arg>
-                                <arg>--add-opens java.base/java.util=ALL-UNNAMED</arg>
-                                <arg>--trace-object-instantiation=com.sun.xml.ws.policy.privateutil.PolicyLogger</arg>
-<!--                                <arg>&#45;&#45;initialize-at-build-time=com.sun.xml.ws.policy.privateutil.PolicyLogger</arg>-->
-<!--                                <arg>&#45;&#45;initialize-at-build-time=com.ctc.wstx.stax.WstxInputFactory</arg>-->
-<!--                                <arg>&#45;&#45;initialize-at-build-time=com.ctc.wstx.api.ReaderConfig</arg>-->
-<!--                                <arg>&#45;&#45;initialize-at-build-time=org.glassfish.jaxb.runtime.v2.runtime.JAXBContextImpl</arg>-->
-<!--                                <arg>&#45;&#45;initialize-at-build-time=org.glassfish.jaxb.runtime.v2.runtime.LeafBeanInfoImpl</arg>-->
-                            </buildArgs>
+                            <source>${maven.compiler.source}</source>
+                            <target>${maven.compiler.target}</target>
+                            <complianceLevel>${maven.compiler.target}</complianceLevel>
+                            <aspectLibraries>
+                                <aspectLibrary>
+                                    <groupId>software.amazon.lambda</groupId>
+                                    <artifactId>powertools-tracing</artifactId>
+                                </aspectLibrary>
+                                <aspectLibrary>
+                                    <groupId>software.amazon.lambda</groupId>
+                                    <artifactId>powertools-metrics</artifactId>
+                                </aspectLibrary>
+                            </aspectLibraries>
                         </configuration>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-assembly-plugin</artifactId>
-                        <version>3.3.0</version>
                         <executions>
                             <execution>
-                                <id>zip-assembly</id>
-                                <phase>package</phase>
                                 <goals>
-                                    <goal>single</goal>
+                                    <goal>compile</goal>
                                 </goals>
-                                <configuration>
-                                    <finalName>function</finalName>
-                                    <descriptors>
-                                        <descriptor>src/assembly/zip.xml</descriptor>
-                                    </descriptors>
-                                    <attach>false</attach>
-                                    <appendAssemblyId>false</appendAssemblyId>
-                                </configuration>
                             </execution>
                         </executions>
                     </plugin>
                 </plugins>
             </build>
+        </profile>
+        <profile>
+            <id>snapStart</id>
+<!--            <build>-->
+<!--                <plugins>-->
+<!--                    <plugin>-->
+<!--                        <groupId>com.github.spotbugs</groupId>-->
+<!--                        <artifactId>spotbugs-maven-plugin</artifactId>-->
+<!--                        <version>4.7.3.0</version>-->
+<!--                        <configuration>-->
+<!--                            <effort>Max</effort>-->
+<!--                            <threshold>medium</threshold>-->
+<!--                            <failOnError>true</failOnError>-->
+<!--                            <plugins>-->
+<!--                                <plugin>-->
+<!--                                    <groupId>software.amazon.lambda.snapstart</groupId>-->
+<!--                                    <artifactId>aws-lambda-snapstart-java-rules</artifactId>-->
+<!--                                    <version>0.1</version>-->
+<!--                                </plugin>-->
+<!--                            </plugins>-->
+<!--                        </configuration>-->
+<!--                    </plugin>-->
+<!--                </plugins>-->
+<!--            </build>-->
         </profile>
     </profiles>
 
