@@ -2,12 +2,7 @@ package com.claranet.vies.proxy.stack;
 
 import org.jetbrains.annotations.Nullable;
 import software.amazon.awscdk.*;
-import software.amazon.awscdk.services.apigateway.LambdaIntegration;
-import software.amazon.awscdk.services.apigateway.RestApi;
-import software.amazon.awscdk.services.apigateway.RestApiProps;
-import software.amazon.awscdk.services.apigateway.StageOptions;
 import software.amazon.awscdk.services.ecr.assets.Platform;
-import software.amazon.awscdk.services.iam.ServicePrincipal;
 import software.amazon.awscdk.services.lambda.Runtime;
 import software.amazon.awscdk.services.lambda.*;
 import software.amazon.awscdk.services.logs.RetentionDays;
@@ -46,21 +41,14 @@ public class ViesProxyStack extends Stack {
     public ViesProxyStack(@Nullable Construct parentScope, @Nullable String id, @Nullable StackProps props) {
         super(parentScope, id, props);
 
-        // API Gateway
-
-        var restApi = new RestApi(this, "ViesProxy", RestApiProps.builder()
-            .description("Vies Proxy API Gateway")
-            .deployOptions(StageOptions.builder().stageName("dev").build())
-            .build());
-
         var targetPlatform = TargetPlatform.matchingCurrent();
 
-        buildBaseline(this, restApi);
-        buildDockerFunctions(this, restApi, targetPlatform);
-        buildCustomRuntimeJava19(this, restApi);
+        buildBaseline(this);
+        buildDockerFunctions(this, targetPlatform);
+        buildCustomRuntimeJava19(this);
     }
 
-    private static void buildBaseline(Construct scope, RestApi restApi) {
+    private static void buildBaseline(Construct scope) {
         var bundlingOptions = BundlingOptions.builder()
                 .image(Runtime.JAVA_11.getBundlingImage())
                 .command(List.of("./mvnw -ntp -e -q package -pl software -am -DskipTests -P snapStart" +
@@ -78,12 +66,12 @@ public class ViesProxyStack extends Stack {
                 .memorySize(512)
                 .timeout(Duration.seconds(15))
                 .logRetention(RetentionDays.FIVE_DAYS)
-                .tracing(Tracing.DISABLED) // tracing is not yet supported for SnapStart
+                .tracing(Tracing.DISABLED) // tracing is not yet supported for SnapStart, so we disable it
                 .build();
-        buildMethod(scope, restApi, "11-baseline", baselineFunction);
+        outputFunctionARN(scope, "11-baseline", baselineFunction);
     }
 
-    private static void buildCustomRuntimeJava19(Construct scope, RestApi restApi) {
+    private static void buildCustomRuntimeJava19(Construct scope) {
         var bundlingOptions = BundlingOptions.builder()
                 .image(DockerImage.fromRegistry("public.ecr.aws/amazoncorretto/amazoncorretto:19-al2-jdk"))
                 .command(List.of("./build-custom-runtime.sh && ./mvnw clean"))
@@ -108,10 +96,10 @@ public class ViesProxyStack extends Stack {
             .tracing(Tracing.ACTIVE)
             .build();
 
-        buildMethod(scope, restApi, "19-custom", customRuntimeFunction);
+        outputFunctionARN(scope, "19-custom", customRuntimeFunction);
     }
 
-    private static void buildDockerFunctions(Construct scope, RestApi restApi, TargetPlatform targetPlatform) {
+    private static void buildDockerFunctions(Construct scope, TargetPlatform targetPlatform) {
         var ecrPlatform = targetPlatform == ARM_64 ? Platform.LINUX_ARM64 : Platform.LINUX_AMD64;
         RUNTIME_CONFIGURATIONS.forEach(configuration -> {
             var buildConfiguration = AssetImageCodeProps.builder()
@@ -132,29 +120,18 @@ public class ViesProxyStack extends Stack {
                 .tracing(Tracing.ACTIVE)
                 .build();
 
-            buildMethod(scope, restApi, configuration.runtime, function);
+            outputFunctionARN(scope, configuration.runtime, function);
         });
     }
 
-    private static void buildMethod(Construct scope, RestApi restApi, String path, Function function) {
-
-        function.grantInvoke(new ServicePrincipal("apigateway.amazonaws.com"));
-
-        var method = restApi.getRoot()
-            .addResource(path)
-            .addResource("validate")
-            .addResource("{country}")
-            .addResource("{vatNumber}")
-            .addMethod("GET", LambdaIntegration.Builder.create(function).timeout(Duration.seconds(15)).build());
+    private static void outputFunctionARN(Construct scope, String path, Function function) {
 
         CfnOutput.Builder.create(scope, "vies-proxy-" + path)
-            .description("Endpoint for lambda " + path)
-            .exportName(path + "Endpoint")
-            .value(
-                restApi.getUrl() +
-                method.getResource().getPath().substring(1) // remove trailing slash
-            )
-            .build();
+                .description("ARN " + path)
+                .exportName(path + "ARN")
+                .value(function.getFunctionArn())
+                .build();
+
     }
 
     private static class RuntimeConfiguration {
