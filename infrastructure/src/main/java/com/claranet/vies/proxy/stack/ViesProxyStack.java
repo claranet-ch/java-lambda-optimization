@@ -35,9 +35,9 @@ public class ViesProxyStack extends Stack {
         }
     }
 
-    private static final String APP_CDS = "-XX:SharedArchiveFile=appCds.jsa";
+    private static final String APP_CDS = TIERED_COMPILATION + " -XX:SharedArchiveFile=appCds.jsa";
     private static final List<RuntimeConfiguration> RUNTIME_CONFIGURATIONS = List.of(
-        new RuntimeConfiguration("19", TIERED_COMPILATION + " " + APP_CDS)
+        new RuntimeConfiguration("19", APP_CDS)
     );
 
     public ViesProxyStack(@Nullable Construct parentScope, @Nullable String id, @Nullable StackProps props) {
