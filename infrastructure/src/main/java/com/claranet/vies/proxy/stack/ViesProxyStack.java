@@ -13,10 +13,12 @@ import java.util.List;
 import java.util.Map;
 
 import static com.claranet.vies.proxy.common.EnvironmentVars.JAVA_HOME;
-import static com.claranet.vies.proxy.common.EnvironmentVars.JAVA_OPTIONS;
+import static com.claranet.vies.proxy.common.EnvironmentVars.JAVA_TOOL_OPTIONS;
 import static com.claranet.vies.proxy.stack.ViesProxyStack.TargetPlatform.ARM_64;
 
 public class ViesProxyStack extends Stack {
+
+    private static final String TIERED_COMPILATION = "-XX:+TieredCompilation -XX:TieredStopAtLevel=1 -XX:+UseSerialGC";
 
     enum TargetPlatform {
         ARM_64("aarch64", Architecture.ARM_64), X86_64("x86_64", Architecture.X86_64);
@@ -35,7 +37,7 @@ public class ViesProxyStack extends Stack {
 
     private static final String APP_CDS = "-XX:SharedArchiveFile=appCds.jsa";
     private static final List<RuntimeConfiguration> RUNTIME_CONFIGURATIONS = List.of(
-        new RuntimeConfiguration("19", APP_CDS)
+        new RuntimeConfiguration("19", TIERED_COMPILATION + " " + APP_CDS)
     );
 
     public ViesProxyStack(@Nullable Construct parentScope, @Nullable String id, @Nullable StackProps props) {
@@ -57,18 +59,21 @@ public class ViesProxyStack extends Stack {
                 .entrypoint(List.of("/bin/sh", "-c"))
                 .outputType(BundlingOutput.ARCHIVED)
                 .build();
-        var baselineFunction = Function.Builder.create(scope, "ViesProxy19-baseline")
+        var baselineFunction = Function.Builder.create(scope, "ViesProxy11-baseline")
                 .runtime(Runtime.JAVA_11)
                 .architecture(Architecture.X86_64)
-                .functionName("vies-proxy-11-baseline")
+                .functionName("vies-proxy-11")
                 .code(Code.fromAsset(".", AssetOptions.builder().bundling(bundlingOptions).build()))
                 .handler("com.claranet.vies.proxy.Handler::handleRequest")
+                .environment(Map.of(
+                    JAVA_TOOL_OPTIONS.key(), TIERED_COMPILATION
+                ))
                 .memorySize(512)
                 .timeout(Duration.seconds(15))
                 .logRetention(RetentionDays.FIVE_DAYS)
                 .tracing(Tracing.DISABLED) // tracing is not yet supported for SnapStart, so we disable it
                 .build();
-        outputFunctionARN(scope, "11-baseline", baselineFunction);
+        outputFunctionARN(scope, "11", baselineFunction);
     }
 
     private static void buildCustomRuntimeJava19(Construct scope) {
@@ -86,7 +91,7 @@ public class ViesProxyStack extends Stack {
             .functionName("vies-proxy-19-custom")
             .memorySize(512)
             .environment(Map.of(
-                JAVA_OPTIONS.key(), APP_CDS,
+                JAVA_TOOL_OPTIONS.key(), APP_CDS,
                 JAVA_HOME.key(), "./jre"
             ))
             .handler("not.really.needed")
@@ -111,10 +116,9 @@ public class ViesProxyStack extends Stack {
                 .functionName("vies-proxy-" + configuration.runtime)
                 .architecture(targetPlatform.architecture)
                 .memorySize(512)
-                .environment(
-                    Map.of(
-                        JAVA_OPTIONS.key(), configuration.javaOptions
-                    ))
+                .environment(Map.of(
+                    JAVA_TOOL_OPTIONS.key(), configuration.javaOptions
+                ))
                 .timeout(Duration.seconds(15))
                 .logRetention(RetentionDays.FIVE_DAYS)
                 .tracing(Tracing.ACTIVE)

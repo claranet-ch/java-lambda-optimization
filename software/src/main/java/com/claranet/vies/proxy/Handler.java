@@ -2,8 +2,7 @@ package com.claranet.vies.proxy;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPEvent;
-import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
+import com.claranet.vies.proxy.model.ValidationRequest;
 import com.claranet.vies.proxy.model.ValidationResponse;
 import eu.europa.ec.vies.CheckVatPortType;
 import eu.europa.ec.vies.CheckVatService;
@@ -16,9 +15,8 @@ import software.amazon.lambda.powertools.metrics.Metrics;
 import software.amazon.lambda.powertools.tracing.Tracing;
 
 import javax.xml.namespace.QName;
-import java.util.Map;
 
-public class Handler implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse>, Resource {
+public class Handler implements RequestHandler<ValidationRequest, ValidationResponse>, Resource {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Handler.class);
     private static final CheckVatPortType PORT;
@@ -37,39 +35,21 @@ public class Handler implements RequestHandler<APIGatewayV2HTTPEvent, APIGateway
     @Metrics(captureColdStart = true)
     @Tracing
     @Override
-    public APIGatewayV2HTTPResponse handleRequest(APIGatewayV2HTTPEvent input, Context context) {
+    public ValidationResponse handleRequest(ValidationRequest input, Context context) {
         LOGGER.info("Entering handleRequest");
-        var params = input.getPathParameters();
 
-        if (params == null) {
-            LOGGER.warn("Params null. Returning 400");
-            return APIGatewayV2HTTPResponse.builder()
-                    .withStatusCode(400)
-                    .build();
-        }
-
-        var country = params.get("country");
-        var vatNumber = params.get("vatNumber");
+        var country = input.getCountry();
+        var vatNumber = input.getVatNumber();
 
         if (country == null || country.strip().length() != 2 || vatNumber == null || vatNumber.isEmpty()) {
-            return APIGatewayV2HTTPResponse.builder()
-                    .withStatusCode(400)
-                    .build();
+            throw new IllegalArgumentException("Invalid input");
         }
 
         try {
-            var result = performValidation(params.get("country"), params.get("vatNumber"));
-            return APIGatewayV2HTTPResponse.builder()
-                    .withHeaders(Map.of("Content-Type", "application/json"))
-                    .withBody(result.toJsonString())
-                    .withStatusCode(200)
-                    .build();
-
+            return performValidation(country, vatNumber);
         } catch (Exception ex) {
             LOGGER.error("Error while calling VIES service. Returning 500", ex);
-            return APIGatewayV2HTTPResponse.builder()
-                .withStatusCode(500)
-                .build();
+            throw new RuntimeException(ex);
         }
     }
 

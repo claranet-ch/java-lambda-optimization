@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
-$JAVA_HOME/bin/java $JAVA_OPTIONS --add-opens java.base/java.util=ALL-UNNAMED \
-    -XX:+TieredCompilation \
-    -XX:TieredStopAtLevel=1 \
-    -XX:+UseSerialGC \
+$JAVA_HOME/bin/java $JAVA_TOOL_OPTIONS --add-opens java.base/java.util=ALL-UNNAMED \
     -jar function.jar "com.claranet.vies.proxy.Handler::handleRequest"
